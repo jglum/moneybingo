@@ -1,0 +1,37 @@
+name: Daily Bingo
+
+on:
+  schedule:
+    - cron: "0 17 * * *"   # every day at 17:00 UTC
+  workflow_dispatch:       # allow manual run
+
+jobs:
+  post-bingo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write    # so we can commit updated bingo_state.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Post bingo number
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: python bingo_poster.py
+
+      - name: Commit state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bingo_state.json
+          git commit -m "Update bingo state" || echo "No changes"
+          git push
