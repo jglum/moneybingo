@@ -48,7 +48,9 @@ def main():
     num = pick_number(state)
     save_state(state)
 
-    msg = f"*Daily Bingo:* {letter_for(num)}{num:02d}  🎉"
+    msg = (
+        f":bingo: *Today's Money bingo number is...:* :bingo:\n\n"
+        f'> *{letter_for(num)}{num:02d}  :tada:\n\n"
     # Add a friendly footer showing how many have been called this round
     msg += f"\n_{75 - len(state['remaining'])}/75 called this round_"
     try:
