@@ -1,13 +1,20 @@
 import json, os, random, time
 from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 # --- Config from env ---
 TOKEN = os.environ["SLACK_BOT_TOKEN"]
 CHANNEL = os.environ["SLACK_CHANNEL_ID"]
+DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 
-# --- Storage (kept in the repo so it persists between runs) ---
+# Post time: 2:30 PM America/New_York
+TARGET_HOUR = 14
+TARGET_MINUTE = 30
+TZ = ZoneInfo("America/New_York")
+
 STATE_PATH = Path("bingo_state.json")
 
 def letter_for(num: int) -> str:
@@ -23,44 +30,55 @@ def load_state():
     return {"remaining": list(range(1, 76)), "history": []}
 
 def save_state(state):
-    # Avoid flakiness: write atomically
     tmp = STATE_PATH.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=2, sort_keys=True))
     tmp.replace(STATE_PATH)
 
 def pick_number(state):
     if not state["remaining"]:
-        # Reset after finishing a full set
         state["remaining"] = list(range(1, 76))
         state["history"].clear()
-
     choice = random.choice(state["remaining"])
     state["remaining"].remove(choice)
     state["history"].append({"n": choice, "ts": int(time.time())})
     return choice
 
-def post_message(client, text):
-    client.chat_postMessage(channel=CHANNEL, text=text)
+def build_blocks(n: int, called_count: int):
+    b = letter_for(n)
+    label = f"{b}{n:02d}"
+    return [
+        {"type": "header", "text": {"type": "plain_text", "text": "🎱 Daily Bingo"}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*Number:* `{label}` 🎉"}},
+        {"type": "context", "elements": [
+            {"type": "mrkdwn", "text": f"_{called_count}/75 called this round_"}
+        ]}
+    ]
 
 def main():
-    client = WebClient(token=TOKEN)
+    # Only post at exactly 14:30 New York time
+    now_ny = datetime.now(TZ)
+    if not (now_ny.hour == TARGET_HOUR and now_ny.minute == TARGET_MINUTE):
+        print(f"[INFO] Current NY time {now_ny.strftime('%Y-%m-%d %H:%M')}, not posting.")
+        return
+
     state = load_state()
     num = pick_number(state)
     save_state(state)
 
-    msg = (
-        f":bingo: *Today's Money bingo number is...:* :bingo:\n\n"
-        f'> *{letter_for(num)}{num:02d}  :tada:\n\n"
-    # Add a friendly footer showing how many have been called this round
-    msg += f"\n_{75 - len(state['remaining'])}/75 called this round_"
+    called_so_far = 75 - len(state["remaining"])
+    blocks = build_blocks(num, called_so_far)
+
+    if DRY_RUN:
+        print("[DRY RUN] Would post:")
+        print(json.dumps(blocks, indent=2))
+        return
+
+    client = WebClient(token=TOKEN)
     try:
-        post_message(client, msg)
+        client.chat_postMessage(channel=CHANNEL, text="Daily Bingo", blocks=blocks)
+        print(f"[OK] Posted number {letter_for(num)}{num}")
     except SlackApiError as e:
-        # Post errors to the channel for visibility (optional)
-        err = f"Failed to post bingo number: {e.response.get('error')}"
-        print(err)
-        raise
+        print(f"[ERROR] Slack API: {e.response.get('error')}")
 
 if __name__ == "__main__":
     main()
-
