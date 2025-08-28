@@ -2,14 +2,14 @@ name: Daily Bingo
 
 on:
   schedule:
-    - cron: "0 17 * * *"   # every day at 17:00 UTC
-  workflow_dispatch:       # allow manual run
+    - cron: "30 * * * *"   # every hour at :30 UTC
+  workflow_dispatch:       # allow manual runs
 
 jobs:
   post-bingo:
     runs-on: ubuntu-latest
     permissions:
-      contents: write    # so we can commit updated bingo_state.json
+      contents: write      # to commit bingo_state.json
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,11 +22,11 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
-      - name: Post bingo number
+      - name: Run bingo poster
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
-        run: python bingo_poster.py
+        run: python bingoposter.py
 
       - name: Commit state
         run: |
